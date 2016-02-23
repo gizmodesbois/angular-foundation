@@ -26,7 +26,7 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
 
   // The options specified to the provider globally.
   var globalOptions = {};
-  
+
   /**
    * `options({})` allows global configuration of all tooltips in the
    * application.
@@ -65,7 +65,7 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
    * TODO support multiple triggers
    */
   this.$get = [ '$window', '$compile', '$timeout', '$parse', '$document', '$position', '$interpolate', function ( $window, $compile, $timeout, $parse, $document, $position, $interpolate ) {
-    return function $tooltip ( type, prefix, defaultTriggerShow ) {
+    return function $tooltip ( type, prefix, defaultTriggerShow) {
       var options = angular.extend( {}, defaultOptions, globalOptions );
 
       /**
@@ -95,7 +95,7 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
 
       var startSym = $interpolate.startSymbol();
       var endSym = $interpolate.endSymbol();
-      var template = 
+      var template =
         '<div '+ directiveName +'-popup '+
           'title="'+startSym+'tt_title'+endSym+'" '+
           'content="'+startSym+'tt_content'+endSym+'" '+
@@ -132,6 +132,59 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
               ttWidth = tooltip.prop( 'offsetWidth' );
               ttHeight = tooltip.prop( 'offsetHeight' );
 
+              /* Change tooltop positioning when overflowing the body is unavoidable */
+
+              // Get the postion of the element in the body
+              var elScreenPos = $position.offset(element),
+                topOverflow,
+                bottomOverflow,
+                rightOverflow,
+                leftOverflow;
+
+              var isSmall = document.body.clientWidth < 800;
+
+              // Deal with right and left oveflows
+              if(isSmall){
+                  scope.tt_placement = 'bottom';
+              }
+              else if (scope.tt_placement === 'left' || scope.tt_placement === 'right') {
+                  rightOverflow = ((elScreenPos.left + position.width + 10) - document.body.scrollWidth) > 0;
+                  leftOverflow = (elScreenPos.left - ttWidth - 10) < 0;
+                  topOverflow = (elScreenPos.top + position.height / 2 - ttHeight / 2) < 0;
+                  bottomOverflow = (elScreenPos.top + position.height / 2 - ttHeight / 2 + ttHeight - document.body.scrollHeight) > 0;
+
+                  // There will be space either at the top or bottom.
+                  // If there is no space at the bottom the page will resize
+                  if(topOverflow){
+                    scope.tt_placement = 'bottom';
+                  } else if(bottomOverflow){
+                    scope.tt_placement = 'top';
+                  } else if (rightOverflow && !leftOverflow) {
+                    scope.tt_placement = 'left';
+                  } else if (!rightOverflow && leftOverflow) {
+                    scope.tt_placement = 'right';
+                  } else if (rightOverflow && leftOverflow) {
+                    scope.tt_placement = 'bottom';
+                  }
+
+              }
+              // Deal with top oveflows
+              else if ( scope.tt_placement === 'top' || scope.tt_placement === 'bottom') {
+                // Assumption: the body will resize to accomodate a tooltip below an element
+                // Uncomment below in case of faulty assumption:
+
+                var bottomOverflow = (elScreenPos.top + position.height + 10 + ttHeight - document.body.clientHeight) > 0;
+                if(!topOverflow && bottomOverflow) {
+                  scope.tt_placement = 'top';
+                }
+
+                topOverflow = (elScreenPos.top - ttHeight - 10) < 0;
+
+                if(topOverflow) {
+                  scope.tt_placement = 'bottom';
+                }
+              }
+
               // Calculate the tooltip's top and left coordinates to center it with
               // this directive.
               switch ( scope.tt_placement ) {
@@ -161,6 +214,23 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
                   break;
               }
 
+              // Move the tooltip if it overflows to the right or left
+              if(scope.tt_placement === 'bottom' || scope.tt_placement === 'top'){
+                  var overflow = (elScreenPos.left + ttWidth) - document.body.scrollWidth;
+
+                  if(overflow > 0){
+                    // Move the tooltip
+                    ttPosition.left -= overflow + 10;
+
+                    // Reposition the nub to be at the element the tooltip is attached to
+                    var nub = tooltip[0].querySelector('.joyride-nub');
+                    if(nub){
+                      angular.element(nub).css({'left': overflow + 10 + 'px'});
+                    }
+                  }
+              }
+
+
               ttPosition.top += 'px';
               ttPosition.left += 'px';
 
@@ -172,6 +242,20 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
             // By default, the tooltip is not open.
             // TODO add ability to start tooltip opened
             scope.tt_isOpen = false;
+
+            // Reposition tooltip on resize
+            var resizeFn = function() {
+              if(scope.tt_isOpen){
+                positionTooltip();
+              }
+            };
+
+            var win = angular.element($window);
+            win.bind('resize', resizeFn);
+
+            scope.$on('$destroy', function(){
+              win.unbind('resize', resizeFn);
+            });
 
             function toggleTooltipBind () {
               if ( ! scope.tt_isOpen ) {
@@ -220,7 +304,7 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
               // Set the initial positioning.
               tooltip.css({ top: 0, left: 0, display: 'block' });
 
-              // Now we add it to the DOM because need some info about it. But it's not 
+              // Now we add it to the DOM because need some info about it. But it's not
               // visible yet anyway.
               if ( appendToBody ) {
                   $document.find( 'body' ).append( tooltip );
@@ -247,7 +331,7 @@ angular.module( 'mm.foundation.tooltip', [ 'mm.foundation.position', 'mm.foundat
               //if tooltip is going to be shown after delay, we must cancel this
               $timeout.cancel( popupTimeout );
 
-              // And now we remove it from the DOM. However, if we have animation, we 
+              // And now we remove it from the DOM. However, if we have animation, we
               // need to wait for it to expire beforehand.
               // FIXME: this is a placeholder for a port of the transitions library.
               if ( scope.tt_animation ) {
